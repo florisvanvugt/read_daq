@@ -69,23 +69,24 @@ class Meter(Frame):
         self.pb['value']=val
         self.tv.set("%.3f"%vol)
     
-        
-
+  
 
 
 
 pbs = []
+fram = Frame(master)
+fram.pack(side='top')
 for chan_i,ch in enumerate(CHANNELS):
 
     tv = StringVar()
     tv.set("CHANNEL %d"%ch)
-    label = Label( master, textvariable=tv, relief=RAISED )
+    label = Label( fram, textvariable=tv, relief=RAISED )
     label.grid(row=chan_i+1,column=0)
     
     thischan = []
     for range_i,ran in enumerate(range(n_ranges)):
 
-        meter = Meter(master)
+        meter = Meter(fram)
         meter.grid(row=chan_i+1,column=range_i+1)
 
         thischan.append(meter)
@@ -97,16 +98,14 @@ for range_i,ran in enumerate(ranges):
     
     tv = StringVar()
     tv.set("[%.3f,%.3f]"%(ran.min,ran.max))
-    label = Label( master, textvariable=tv, relief=RAISED )
+    label = Label( fram, textvariable=tv, relief=RAISED )
     label.grid(row=0,column=range_i+1)
     
 
-# Code to add widgets will go here...
-while True:
-    master.update()
-    master.update_idletasks()
 
-
+      
+def capture_all():
+    captured = [ [ None for _ in range(n_ranges) ] for _ in CHANNELS ]
     for chan_i,ch in enumerate(CHANNELS):
         for range_i,ran in enumerate(range(n_ranges)):
             ret,data = c.comedi_data_read(dev,
@@ -116,12 +115,48 @@ while True:
                                           c.AREF_GROUND)
             phydata = c.comedi_to_phys(data, ranges[ran], maxdata)
 
+            captured[chan_i][range_i] = (data,phydata)
+    return captured
+
+
+
+biases = [ [ (0,0) for _ in range(n_ranges) ] for _ in CHANNELS ]
+
+def zero_bias():
+    global biases
+    biases = capture_all()
+    print('zero bias!')
+        
+fram = Frame(master)
+fram.pack(side='bottom')
+b = Button(fram, text="Zero bias", command=zero_bias)
+b.pack()
+
+
+
+
+    
+# Code to add widgets will go here...
+while True:
+    master.update()
+    master.update_idletasks()
+
+
+    captured = capture_all()
+
+    for chan_i,ch in enumerate(CHANNELS):
+        for range_i,ran in enumerate(range(n_ranges)):
+
             #print(phydata)
-            pbs[chan_i][range_i].set_value(data,phydata) #['value'] = data
+            data,phydata = captured[chan_i][range_i]
+
+            _,zero_phydata = biases[chan_i][range_i]
+            
+            pbs[chan_i][range_i].set_value(data,phydata-zero_phydata) #['value'] = data
             #print("[%.3f,%.3f] Raw %d  --> voltage %f" %(ranges[rn].min,ranges[rn].max,data,phydata))
     
 
-
+            
 ret = c.comedi_close(dev)
 if ret<0:
 	raise Exception("ERROR executing comedi_close")
