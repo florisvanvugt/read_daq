@@ -4,11 +4,36 @@ from Tkinter import *
 
 import ttk
 
+#from Tkinter import font
+#fnt = font.nametofont("TkFixedFont").actual()
+
 master = Tk()
+#default_font = tkFont.nametofont("Courier New")
+#default_font.configure(size=12)
+#master.option_add("*Font", fnt)
+
+fixed = ttk.Style()
+#fixed.configure('Fixed.TButton', font='TkFixedFont')
+fixed.configure("Courier.TButton", font=("Courier", 16))
+#fixed.theme_use('default')
+master.style=fixed
 
 DEVICE    = '/dev/comedi0'
 SUBDEVICE = 0
 CHANNELS = [ c+1 for c in range(16) ]
+
+
+
+N_FORCES = 6
+
+dumpf = open('dump.txt','w')
+
+
+
+import numpy as np
+sens_to_f = np.genfromtxt('sensor_transf_matrix_FT4714.csv',delimiter=',')
+# read the matrix that transforms sensor data into force data.
+# note: the columns here are the sensor dimensions, the rows are the force dimensions.
 
 
 
@@ -54,6 +79,7 @@ class Meter(Frame):
         tv.set("something")
         label = Label( self, textvariable=tv, relief=RAISED )
         label.pack(side='left')
+        label.configure(font=('Courier',16))
         
         pb = ttk.Progressbar(self,
                              orient="horizontal",
@@ -67,7 +93,12 @@ class Meter(Frame):
         
     def set_value(self,val,vol):
         self.pb['value']=val
-        self.tv.set("%.3f"%vol)
+
+        v = "%.3f"%vol
+        if v[0]!='-': v="+"+v
+        if v=='+nan': v=' nan  '
+        
+        self.tv.set(v)
     
   
 
@@ -75,7 +106,7 @@ class Meter(Frame):
 
 pbs = []
 fram = Frame(master)
-fram.pack(side='top')
+fram.pack(side='top',anchor=W)
 for chan_i,ch in enumerate(CHANNELS):
 
     tv = StringVar()
@@ -94,12 +125,30 @@ for chan_i,ch in enumerate(CHANNELS):
 
 
 
+ 
+
 for range_i,ran in enumerate(ranges):
     
     tv = StringVar()
     tv.set("[%.3f,%.3f]"%(ran.min,ran.max))
     label = Label( fram, textvariable=tv, relief=RAISED )
     label.grid(row=0,column=range_i+1)
+
+
+
+
+force_labels = []
+for f in range(N_FORCES):
+
+    fsth = StringVar()
+    fsth.set("SOMETHING")
+    label = Label( fram, textvariable=fsth, relief=RAISED )
+    label.grid(row=len(CHANNELS)+f+3,column=1,sticky=W)
+    label.configure(font=('Courier',20))
+    #label.pack(side='bottom',anchor=W)
+    force_labels.append(fsth)
+
+
     
 
 
@@ -130,10 +179,37 @@ def zero_bias():
 fram = Frame(master)
 fram.pack(side='bottom')
 b = Button(fram, text="Zero bias", command=zero_bias)
-b.pack()
+b.pack(side='top')
 
 
 
+
+
+def compute_forces(channels,biases):
+
+    channels = np.array(channels)
+    biases   = np.array(biases)
+
+    # Subtract the bias
+    ref = channels-biases
+
+    # Multiply with the sensor matrix
+    forces = sens_to_f.dot(ref[:6])
+    #print(forces)
+    return forces
+    
+    
+
+
+
+SELECTED_RANGE = 0 # in the list of ranges (e.g. 1 corresponds to [-5V,+5V]
+    
+
+def formulate_f(f):
+    s= "%.3f"%f
+    if not f<0: s="+"+s
+    return s
+    
 
     
 # Code to add widgets will go here...
@@ -156,6 +232,22 @@ while True:
             #print("[%.3f,%.3f] Raw %d  --> voltage %f" %(ranges[rn].min,ranges[rn].max,data,phydata))
     
 
+
+    channels = [ captured[ch][SELECTED_RANGE][1] for ch,_ in enumerate(CHANNELS) ]
+    bias     = [ biases[ch][SELECTED_RANGE][1]   for ch,_ in enumerate(CHANNELS) ]
+
+    forces = compute_forces(channels,bias)
+    for i,force in enumerate(forces):
+        #f = str([ '%.2f'%fn for fn in forces])
+        
+        force_labels[i].set('f%d -- %s N'%(i,formulate_f(force)))
+        #allf.set(f)
+
+    dumpf.write(" ".join([ str(x) for x in channels])+"\n")
+
+    
+
+dumpf.close()
             
 ret = c.comedi_close(dev)
 if ret<0:

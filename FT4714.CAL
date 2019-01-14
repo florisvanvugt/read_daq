@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FTSensor  Serial="FT4714" BodyStyle="Nano17" Family="DAQ" NumGages="6" CalFileVersion="1.0">
+	<Calibration  PartNumber="SI-12-0.12" CalDate="3/14/2002" ForceUnits="N" TorqueUnits="N-mm" DistUnits="mm" OutputMode="Ground Referenced Differential" OutputRange="20" OutputBipolar="True">
+		<Axis Name="Fx" values="  0.30668 -26.46150  -0.63977  25.94872   0.13512  -0.14080  " max="12" scale="18.5291718041442"/>
+		<Axis Name="Fy" values="  0.29145 -15.95638   0.12981 -14.16475   0.03310  34.84884  " max="12" scale="18.5291718041442"/>
+		<Axis Name="Fz" values=" 16.84329   0.04201  17.02738  -0.32335  16.68075   0.17329  " max="17" scale="13.11026306897"/>
+		<Axis Name="Tx" values=" 31.29435  -0.47393 -29.38560   1.17336   1.34058   0.06489  " max="120" scale="4.1498627982094"/>
+		<Axis Name="Ty" values=" 18.00778   0.14877  16.76553   0.95650 -33.96452  -2.33912  " max="120" scale="4.1498627982094"/>
+		<Axis Name="Tz" values=" -0.16367  16.58602  -0.69910  16.61600   0.03474  19.67476  " max="120" scale="2.89733372810308"/>
+		<BasicTransform Dx="0" Dy="0" Dz="6.096" Rx="0" Ry="0" Rz="0"/>
+		<BiasSlope values="0.100624139 0.157754966 -0.360251711 0.373944683 0.050538839 0.244516972"/>
+		<GainSlope values="-0.113673417 0.046547928 0.144723744 0.042441226 0.082712469 0.06518182"/>
+		<Thermistor value="3.192411905"/>
+	</Calibration>
+</FTSensor>
+
