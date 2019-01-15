@@ -29,6 +29,7 @@ N_FORCES = 6
 dumpf = open('dump.txt','w')
 
 
+import math
 
 import numpy as np
 sens_to_f = np.genfromtxt('sensor_transf_matrix_FT4714.csv',delimiter=',')
@@ -69,12 +70,24 @@ print([ (rng.min,rng.max) for rng in ranges])
 
 
 
+MAXV = 1 # Volts
+
+s = ttk.Style()
+s.theme_use('clam')
+s.configure("red.Horizontal.TProgressbar", foreground='red', background='red')
+
+s = ttk.Style()
+s.theme_use('clam')
+s.configure("green.Horizontal.TProgressbar", foreground='green', background='green')
+
+
 class Meter(Frame):
 
     def __init__(self, master=None, maximum=100, **kw):
         Frame.__init__(self, master, **kw)
         self.maximum = maximum
 
+        
         tv = StringVar()
         tv.set("something")
         label = Label( self, textvariable=tv, relief=RAISED )
@@ -84,20 +97,33 @@ class Meter(Frame):
         pb = ttk.Progressbar(self,
                              orient="horizontal",
                              length=200,
-                             maximum=maxdata,
-                             mode="determinate")
+                             maximum=maximum,
+                             mode="determinate",
+                             style='green.Horizontal.TProgressbar')
 
         pb.pack(side='right') #.grid(row=0,column=0)
         self.pb = pb
         self.tv = tv
+
+        
         
     def set_value(self,val,vol):
-        self.pb['value']=val
+        # Determine the voltage reading value
+        # vol is the voltage
+        if not math.isnan(vol):
+            p = int(self.maximum*(abs(vol)/MAXV))
+            #print(p)
+            self.pb['value']=p
 
+            if vol>0:
+                self.pb['style']='green.Horizontal.TProgressbar'
+            else:
+                self.pb['style']='red.Horizontal.TProgressbar'
+
+            
         v = "%.3f"%vol
         if v[0]!='-': v="+"+v
         if v=='+nan': v=' nan  '
-        
         self.tv.set(v)
     
   
@@ -111,7 +137,7 @@ for chan_i,ch in enumerate(CHANNELS):
 
     tv = StringVar()
     tv.set("CHANNEL %d"%ch)
-    label = Label( fram, textvariable=tv, relief=RAISED )
+    label = Label( fram, textvariable=tv )
     label.grid(row=chan_i+1,column=0)
     
     thischan = []
@@ -131,7 +157,7 @@ for range_i,ran in enumerate(ranges):
     
     tv = StringVar()
     tv.set("[%.3f,%.3f]"%(ran.min,ran.max))
-    label = Label( fram, textvariable=tv, relief=RAISED )
+    label = Label( fram, textvariable=tv )
     label.grid(row=0,column=range_i+1)
 
 
@@ -142,7 +168,7 @@ for f in range(N_FORCES):
 
     fsth = StringVar()
     fsth.set("SOMETHING")
-    label = Label( fram, textvariable=fsth, relief=RAISED )
+    label = Label( fram, textvariable=fsth )
     label.grid(row=len(CHANNELS)+f+3,column=1,sticky=W)
     label.configure(font=('Courier',20))
     #label.pack(side='bottom',anchor=W)
@@ -161,7 +187,7 @@ def capture_all():
                                           SUBDEVICE,
                                           ch,
                                           ran,
-                                          c.AREF_GROUND)
+                                          c.AREF_DIFF) #AREF_GROUND) #c.AREF_GROUND)
             phydata = c.comedi_to_phys(data, ranges[ran], maxdata)
 
             captured[chan_i][range_i] = (data,phydata)
