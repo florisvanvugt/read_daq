@@ -1,4 +1,6 @@
 
+import comedi as c
+
 
 from Tkinter import *
 
@@ -20,15 +22,23 @@ master.style=fixed
 
 DEVICE    = '/dev/comedi0'
 SUBDEVICE = 0
-CHANNELS = [ c+1 for c in range(16) ]
+CHANNELS = [ ch for ch in range(16) ]
 
-
+REFERENCE = c.AREF_GROUND #REF_GROUND #AREF_GROUND)#DIFF) #AREF_GROUND) #c.AREF_GROUND)
 
 ## Source: NI 6221 device specification pdf (somewhere)
 ## Source: 9610-05-1017-06 ATI DAQ F/T manual
-channel_to_g = [ (0,8), (1,9), (2,10), (3,11), (4,12), (5,13) ]
+CHANNEL_TO_G_MAPPING = [ (0,8), (1,9), (2,10), (3,11), (4,12), (5,13) ]
 
 
+## The range that we read the data in
+## (On the acquisition card, we can select the range, which will correspond to
+## the voltages that we can read, or not read. Here we just read in the largest
+## possible range (-10 to 10 V) which may affect the resolution, but hey.
+SELECTED_RANGE = 0 # in the list of ranges (e.g. 1 corresponds to [-5V,+5V]
+
+# The maximum value we display for the final forces
+FORCE_MAXREADING = 5
 
 N_FORCES = 6
 
@@ -45,7 +55,6 @@ sens_to_f = np.genfromtxt('sensor_transf_matrix_FT4714.csv',delimiter=',')
 
 
 
-import comedi as c
 
 #open a comedi device
 dev=c.comedi_open(DEVICE)
@@ -76,7 +85,6 @@ print([ (rng.min,rng.max) for rng in ranges])
 
 
 
-MAXV = 1 # Volts
 
 s = ttk.Style()
 s.theme_use('clam')
@@ -89,13 +97,14 @@ s.configure("green.Horizontal.TProgressbar", foreground='green', background='gre
 
 class Meter(Frame):
 
-    def __init__(self, master=None, maximum=100, **kw):
+    def __init__(self, master=None, maximum=100, maxv = 1., **kw):
         Frame.__init__(self, master, **kw)
-        self.maximum = maximum
+        self.maximum = maximum # the number of "ticks"  on the bar
+        self.maxv    = maxv    # the maximum voltage we will show
 
         tv = StringVar()
         tv.set("something")
-        label = Label( self, textvariable=tv, relief=RAISED )
+        label = Label( self, textvariable=tv )
         label.pack(side='left')
         label.configure(font=('Courier',16))
         
@@ -114,7 +123,7 @@ class Meter(Frame):
         # Determine the voltage reading value
         # vol is the voltage
         if not math.isnan(vol):
-            p = int(self.maximum*(abs(vol)/MAXV))
+            p = int(self.maximum*(abs(vol)/self.maxv))
             #print(p)
             self.pb['value']=p
 
@@ -123,10 +132,11 @@ class Meter(Frame):
             else:
                 self.pb['style']='red.Horizontal.TProgressbar'
 
+            v = "%.3f"%vol
+            if not vol<0: v = "+"+v
+        else:
+            v = '  nan '
             
-        v = "%.3f"%vol
-        if v[0]!='-': v="+"+v
-        if v=='+nan': v=' nan  '
         self.tv.set(v)
     
 
@@ -153,7 +163,7 @@ for chan_i,ch in enumerate(CHANNELS):
     thischan = []
     for range_i,ran in enumerate(range(n_ranges)):
 
-        meter = Meter(fram)
+        meter = Meter(fram,maxv=5)
         meter.grid(row=chan_i+1,column=range_i+1)
 
         thischan.append(meter)
@@ -170,14 +180,27 @@ for range_i,ran in enumerate(ranges):
 
 
 
-    
+
+
+def channels_to_g(channels):
+    """ Converts channel readings to g readings."""
+    return [ channels[i]-channels[j] for (i,j) in CHANNEL_TO_G_MAPPING ]     
+
+
+
+gbias = [ 0. for _ in CHANNEL_TO_G_MAPPING ]
+
+def zero_g_bias():
+    global gbias
+    gbias = channels_to_g(channels)
+
 
 
 # Make a big frame with the differentials (i.e. G0-G5)
 fram = Frame(master)
 fram.grid(row=2,column=0)
 Glabels = []
-for f in range(len(channel_to_g)):
+for f in range(len(CHANNEL_TO_G_MAPPING)):
 
     tmp = Frame(fram)
     tmp.grid(row=f,column=1,sticky=W)
@@ -193,7 +216,12 @@ for f in range(len(channel_to_g)):
     
     Glabels.append(meter)
 
+b = Button(fram, text="Zero G0-G5 bias", command=zero_g_bias)
+b.grid(row=0,column=2)
 
+
+
+    
 
     
 
@@ -203,15 +231,21 @@ fram = Frame(master)
 fram.grid(row=3,column=0)
 
 force_labels = []
+fvals = ['fx','fy','fz','tx','ty','tz']
 for f in range(N_FORCES):
 
+    tmp = Frame(fram)
+    tmp.grid(row=f,column=1,sticky=W)
+
     fsth = StringVar()
-    fsth.set("SOMETHING")
-    label = Label( fram, textvariable=fsth )
-    label.grid(row=len(CHANNELS)+f+3,column=1,sticky=W)
+    fsth.set(fvals[f])#"F%d"%f)
+    label = Label(tmp, textvariable=fsth )
+    label.pack(side='left',anchor=W)
     label.configure(font=('Courier',20))
     #label.pack(side='bottom',anchor=W)
-    force_labels.append(fsth)
+    meter = Meter(tmp,maxv=FORCE_MAXREADING)
+    meter.pack(side='right',anchor=W)
+    force_labels.append(meter)
 
 
     
@@ -226,7 +260,7 @@ def capture_all():
                                           SUBDEVICE,
                                           ch,
                                           ran,
-                                          c.AREF_DIFF) #AREF_GROUND) #c.AREF_GROUND)
+                                          REFERENCE)
             phydata = c.comedi_to_phys(data, ranges[ran], maxdata)
 
             captured[chan_i][range_i] = (data,phydata)
@@ -237,37 +271,40 @@ def capture_all():
 biases = [ [ (0,0) for _ in range(n_ranges) ] for _ in CHANNELS ]
 
 def zero_bias():
+    """ This is zero-biasing the raw force channels - not actually used anymore """
     global biases
     biases = capture_all()
     print('zero bias!')
         
 fram = Frame(master)
 fram.grid(row=1,column=0)
-b = Button(fram, text="Zero bias", command=zero_bias)
+b = Button(fram, text="Zero bias (only cosmetic)", command=zero_bias)
 b.pack(side='top')
 
 
 
 
 
-def compute_forces(channels,biases):
 
-    channels = np.array(channels)
-    biases   = np.array(biases)
+
+
+def compute_forces(g_values,biases):
+    """ Converts the g-values (G0-G5) into forces."""
+
+    gs     = np.array(g_values)
+    biases = np.array(biases)
 
     # Subtract the bias
-    ref = channels-biases
+    ref = gs-biases
 
     # Multiply with the sensor matrix
-    forces = sens_to_f.dot(ref[:6])
-    #print(forces)
+    forces = sens_to_f.dot(ref)
     return forces
     
     
 
 
 
-SELECTED_RANGE = 0 # in the list of ranges (e.g. 1 corresponds to [-5V,+5V]
     
 
 def formulate_f(f):
@@ -291,7 +328,6 @@ while True:
 
             #print(phydata)
             data,phydata = captured[chan_i][range_i]
-
             _,zero_phydata = biases[chan_i][range_i]
             
             pbs[chan_i][range_i].set_value(phydata-zero_phydata) #['value'] = data
@@ -300,25 +336,20 @@ while True:
 
     # This is the observed reading in each channel
     channels = [ captured[ch][SELECTED_RANGE][1] for ch,_ in enumerate(CHANNELS) ]
+    #bias     = [ biases[ch][SELECTED_RANGE][1]   for ch,_ in enumerate(CHANNELS) ] # this is the channel bias, not the G-value-bias (if you know what I mean...)
 
-    
     # Now we compute the G0-G5 using the totally awkward combination
-    gs = [ channels[i]-channels[j] for (i,j) in channel_to_g ] 
+    gs = channels_to_g(channels) 
 
     # Let's plot the Gs!
-    for i,greading in enumerate(gs):
-        Glabels[i].set_value(greading)
+    for i,(greading,gb) in enumerate(zip(gs,gbias)):
+        Glabels[i].set_value(greading-gb)
     
+    forces = compute_forces(gs,gbias)
+    for (forc,fl) in zip(forces,force_labels):
+        fl.set_value(forc)
+
     
-    bias     = [ biases[ch][SELECTED_RANGE][1]   for ch,_ in enumerate(CHANNELS) ]
-
-    forces = compute_forces(channels,bias)
-    for i,force in enumerate(forces):
-        #f = str([ '%.2f'%fn for fn in forces])
-        
-        force_labels[i].set('f%d -- %s N'%(i,formulate_f(force)))
-        #allf.set(f)
-
     dumpf.write(" ".join([ str(x) for x in channels])+"\n")
 
     
